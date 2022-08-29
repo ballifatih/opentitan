@@ -162,10 +162,9 @@ typedef struct dif_kmac_config {
   uint32_t entropy_seed[kDifKmacEntropySeedWords];
 
   /**
-   * Entropy reseed interval in clock cycles. Only used when the source of
-   * entropy is EDN.
+   * The number of KMAC invocations that triggers an automatic seed request from EDN.
    */
-  uint16_t entropy_reseed_interval;
+  uint16_t entropy_hash_threshold;
 
   /**
    * Number of clock cycles to wait for the EDN to reseed the entropy generator
@@ -173,6 +172,12 @@ typedef struct dif_kmac_config {
    * wait forever.
    */
   uint16_t entropy_wait_timer;
+
+  /**
+   * Prescaler value that determines how many clock pulse triggers an increment 
+   * in the timer counter.
+   */
+  uint16_t entropy_prescaler;
 
   /**
    * Convert the message to big-endian byte order.
@@ -374,7 +379,7 @@ typedef enum dif_kmac_error {
   /**
    * The entropy wait timer has expired.
    */
-  kDifErrorEntropyWaitTimerExpired,
+  kDifErrorEntropyWaitTimerExpired = 0x04000000,
 
   /**
    * Incorrect entropy mode when entropy is ready.

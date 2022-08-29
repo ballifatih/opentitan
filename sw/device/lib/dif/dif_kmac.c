@@ -228,8 +228,21 @@ dif_result_t dif_kmac_configure(dif_kmac_t *kmac, dif_kmac_config_t config) {
   entropy_period_reg = bitfield_field32_write(
       entropy_period_reg, KMAC_ENTROPY_PERIOD_WAIT_TIMER_FIELD,
       config.entropy_wait_timer);
+  // Write `prescaler` field.
+  entropy_period_reg = bitfield_field32_write(
+      entropy_period_reg, KMAC_ENTROPY_PERIOD_PRESCALER_FIELD,
+      config.entropy_prescaler);
+
   mmio_region_write32(kmac->base_addr, KMAC_ENTROPY_PERIOD_REG_OFFSET,
                       entropy_period_reg);
+
+  // Write threshold field.
+  uint32_t entropy_threshold_reg = KMAC_ENTROPY_REFRESH_THRESHOLD_SHADOWED_REG_RESVAL;
+  entropy_threshold_reg = bitfield_field32_write(
+      entropy_threshold_reg, KMAC_ENTROPY_REFRESH_THRESHOLD_SHADOWED_THRESHOLD_FIELD,
+      config.entropy_hash_threshold);
+  
+  mmio_region_write32(kmac->base_addr, KMAC_ENTROPY_REFRESH_THRESHOLD_SHADOWED_REG_OFFSET, entropy_threshold_reg);
 
   // Write entropy seed registers.
   for (int i = 0; i < kDifKmacEntropySeedWords; ++i) {

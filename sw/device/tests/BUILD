@@ -806,6 +806,22 @@ opentitan_functest(
 )
 
 opentitan_functest(
+    name = "kmac_entropy",
+    srcs = ["kmac_entropy.c"],
+    deps = [
+        "//hw/top_earlgrey/sw/autogen:top_earlgrey",
+        "//sw/device/lib/base:mmio",
+        "//sw/device/lib/dif:rom_ctrl",
+        "//sw/device/lib/dif:kmac",
+        "//sw/device/lib/runtime:log",
+        "//sw/device/lib/testing/test_framework:ottf_main",
+        "//sw/device/lib/dif:rv_plic",
+        "//sw/device/lib/runtime:irq",
+        "//sw/device/lib/testing:entropy_testutils",
+    ],
+)
+
+opentitan_functest(
     name = "kmac_idle_test",
     srcs = ["kmac_idle_test.c"],
     deps = [
