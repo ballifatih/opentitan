@@ -162,7 +162,8 @@ typedef struct dif_kmac_config {
   uint32_t entropy_seed[kDifKmacEntropySeedWords];
 
   /**
-   * The number of KMAC invocations that triggers an automatic seed request from EDN.
+   * The number of KMAC invocations that triggers an automatic seed request from
+   * EDN.
    */
   uint16_t entropy_hash_threshold;
 
@@ -174,7 +175,7 @@ typedef struct dif_kmac_config {
   uint16_t entropy_wait_timer;
 
   /**
-   * Prescaler value that determines how many clock pulse triggers an increment 
+   * Prescaler value that determines how many clock pulse triggers an increment
    * in the timer counter.
    */
   uint16_t entropy_prescaler;
