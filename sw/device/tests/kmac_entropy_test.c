@@ -103,7 +103,7 @@ bool test_main(void) {
   // Handle string encoding
   dif_kmac_customization_string_t str_buffer;
     CHECK_DIF_OK(dif_kmac_customization_string_init(
-        kmac_test_vector.customization_string, 
+        kmac_test_vector.customization_string,
         kmac_test_vector.customization_string_len, &str_buffer));
 
   // When customization_string is empty, use NULL to activate empty str path
@@ -111,15 +111,15 @@ bool test_main(void) {
         kmac_test_vector.customization_string_len == 0 ? NULL : &str_buffer;
 
   size_t digest_l = kmac_test_vector.digest_len_is_fixed ? kmac_test_vector.digest_len : 0;
-  CHECK_DIF_OK(dif_kmac_mode_kmac_start(&kmac, 
-                                          &kmac_operation_state,
-                                          kmac_test_vector.mode, 
-                                          digest_l, 
-                                          &kmac_test_vector.key, 
-                                          s_buff));
+  CHECK_DIF_OK(dif_kmac_mode_kmac_start(&kmac,
+                                        &kmac_operation_state,
+                                        kmac_test_vector.mode,
+                                        digest_l,
+                                        &kmac_test_vector.key,
+                                        s_buff));
 
   // Absorbing stage
-  CHECK_DIF_OK(dif_kmac_absorb(&kmac, 
+  CHECK_DIF_OK(dif_kmac_absorb(&kmac,
                               &kmac_operation_state, kmac_test_vector.message,
                                  kmac_test_vector.message_len, NULL));
 

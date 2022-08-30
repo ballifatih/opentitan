@@ -806,8 +806,8 @@ opentitan_functest(
 )
 
 opentitan_functest(
-    name = "kmac_entropy",
-    srcs = ["kmac_entropy.c"],
+    name = "kmac_entropy_test",
+    srcs = ["kmac_entropy_test.c"],
     deps = [
         "//hw/top_earlgrey/sw/autogen:top_earlgrey",
         "//sw/device/lib/base:mmio",
