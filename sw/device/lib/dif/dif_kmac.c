@@ -200,6 +200,19 @@ dif_result_t dif_kmac_configure(dif_kmac_t *kmac, dif_kmac_config_t config) {
     return kDifLocked;
   }
 
+  // Write entropy period register.
+  uint32_t entropy_period_reg = 0;
+  entropy_period_reg = bitfield_field32_write(
+      entropy_period_reg, KMAC_ENTROPY_PERIOD_WAIT_TIMER_FIELD,
+      config.entropy_wait_timer);
+  // Write `prescaler` field.
+  entropy_period_reg = bitfield_field32_write(
+      entropy_period_reg, KMAC_ENTROPY_PERIOD_PRESCALER_FIELD,
+      config.entropy_prescaler);
+
+  mmio_region_write32(kmac->base_addr, KMAC_ENTROPY_PERIOD_REG_OFFSET,
+                      entropy_period_reg);
+
   // Write configuration register.
   uint32_t cfg_reg = 0;
   cfg_reg = bitfield_bit32_write(cfg_reg, KMAC_CFG_SHADOWED_MSG_ENDIANNESS_BIT,
@@ -222,19 +235,6 @@ dif_result_t dif_kmac_configure(dif_kmac_t *kmac, dif_kmac_config_t config) {
 
   mmio_region_write32_shadowed(kmac->base_addr, KMAC_CFG_SHADOWED_REG_OFFSET,
                                cfg_reg);
-
-  // Write entropy period register.
-  uint32_t entropy_period_reg = 0;
-  entropy_period_reg = bitfield_field32_write(
-      entropy_period_reg, KMAC_ENTROPY_PERIOD_WAIT_TIMER_FIELD,
-      config.entropy_wait_timer);
-  // Write `prescaler` field.
-  entropy_period_reg = bitfield_field32_write(
-      entropy_period_reg, KMAC_ENTROPY_PERIOD_PRESCALER_FIELD,
-      config.entropy_prescaler);
-
-  mmio_region_write32(kmac->base_addr, KMAC_ENTROPY_PERIOD_REG_OFFSET,
-                      entropy_period_reg);
 
   // Write threshold field.
   uint32_t entropy_threshold_reg =
