@@ -196,6 +196,8 @@ class KmacTest : public testing::Test, public mock_mmio::MmioTest {
   }
 
   void ExpectConfig(void) {
+    EXPECT_WRITE32(KMAC_ENTROPY_PERIOD_REG_OFFSET, 0);
+    EXPECT_WRITE32(KMAC_ENTROPY_REFRESH_THRESHOLD_SHADOWED_REG_OFFSET, 0);
     EXPECT_WRITE32_SHADOWED(
         KMAC_CFG_SHADOWED_REG_OFFSET,
         {{KMAC_CFG_SHADOWED_KMAC_EN_BIT, config_reg_.enable},
@@ -646,8 +648,9 @@ class KmacConfigureTest : public KmacTest {
       .entropy_fast_process = false,
       .entropy_seed = {0xaa25b4bf, 0x48ce8fff, 0x5a78282a, 0x48465647,
                        0x70410fef},
-      .entropy_reseed_interval = 4985,
+      //.entropy_reseed_interval = 4985,
       .entropy_wait_timer = 9562,
+      .entropy_prescaler = 0x012F,
       .message_big_endian = false,
       .output_big_endian = false,
       .sideload = false,
