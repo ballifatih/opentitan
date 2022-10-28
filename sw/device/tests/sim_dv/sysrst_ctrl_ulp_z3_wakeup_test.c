@@ -8,6 +8,7 @@
 #include "sw/device/lib/dif/dif_rstmgr.h"
 #include "sw/device/lib/dif/dif_sysrst_ctrl.h"
 #include "sw/device/lib/runtime/ibex.h"
+#include "sw/device/lib/runtime/hart.h"
 #include "sw/device/lib/runtime/log.h"
 #include "sw/device/lib/testing/pwrmgr_testutils.h"
 #include "sw/device/lib/testing/rstmgr_testutils.h"
@@ -29,10 +30,14 @@ static dif_sysrst_ctrl_t sysrst_ctrl;
 
 // This means 20 aon_clk ticks ~= 20 * 5 us = 100 us
 static const uint16_t debounce_timer = 20;
+uint8_t current_phase = 0;
 
 enum {
   kNumMioInPads = 3,
   kNumMioOutPads = 1,
+  kWaitWakeupTimeUsec = 500,
+  // Make it slightly larger than debounce_timer
+  kDebounceTimer = debounce_timer + 1,
 };
 
 const uint32_t kTestPhaseTimeoutUsec = 500;
@@ -87,7 +92,7 @@ static void pinmux_setup(void) {
  * the testbench is ready to proceed with the next phase of the test.
  */
 static void wait_next_test_phase(void) {
-  uint8_t current_phase = kTestPhase;
+  current_phase = kTestPhase;
   // Set WFI status for testbench synchronization
   // No WFI instruction is issued
   LOG_INFO("Prev test phase = %0d", kTestPhase);
@@ -124,11 +129,14 @@ static void configure_wakeup(void) {
 
 static void go_to_sleep(void) {
   // Wakeup source is from sysrst_ctrl (source one).
+  rstmgr_testutils_pre_reset(&rstmgr);
+  pwrmgr_testutils_enable_low_power(&pwrmgr, 63, //kDifPwrmgrWakeupRequestSourceOne,
+                                    kDifPwrmgrDomainOptionMainPowerInLowPower);
+  // Enable intr for shallow sleep
+  // I guess this interrupt won't reach ibex because we didnt set up PLIC
+  CHECK_DIF_OK(dif_pwrmgr_irq_set_enabled(&pwrmgr, kDifPwrmgrIrqWakeup, kDifToggleEnabled));
   LOG_INFO("Going to sleep.");
   test_status_set(kTestStatusInWfi);
-  rstmgr_testutils_pre_reset(&rstmgr);
-  pwrmgr_testutils_enable_low_power(&pwrmgr, kDifPwrmgrWakeupRequestSourceOne,
-                                    0);
   wait_for_interrupt();
 }
 
@@ -139,6 +147,13 @@ static void check_wakeup_reason(void) {
 
   CHECK(rst_info == kDifRstmgrResetInfoLowPowerExit, "Wrong reset reason %02X",
         rst_info);
+}
+
+static dif_rstmgr_reset_info_bitfield_t get_wakeup_reason() {
+  dif_rstmgr_reset_info_bitfield_t rst_info;
+  rst_info = rstmgr_testutils_reason_get();
+  rstmgr_testutils_reason_clear();
+  return rst_info;
 }
 
 static bool has_wakeup_happened(void) {
@@ -159,13 +174,43 @@ bool test_main(void) {
   CHECK_DIF_OK(dif_rstmgr_init(
       mmio_region_from_addr(TOP_EARLGREY_RSTMGR_AON_BASE_ADDR), &rstmgr));
 
+
+  dif_rstmgr_reset_info_bitfield_t wakeup_reason = get_wakeup_reason();
+  LOG_INFO("wk reason = %d", wakeup_reason);
+  CHECK(wakeup_reason == kDifRstmgrResetInfoPor);
+  LOG_INFO("Test starting.");
+
+  pinmux_setup();
+  configure_wakeup();
+  LOG_INFO("sysrst_ctrl wakeup enabled.");
+  
+
+  // Make sure we wait *at least* `kWaitWakeupTimeUsec`
+  busy_spin_micros(30);
+  CHECK(!has_wakeup_happened());
+  LOG_INFO("No wakeup yet.");
+  test_status_set(kTestStatusInWfi);
+  test_status_set(kTestStatusInTest);
+
+  go_to_sleep();
+  CHECK(get_wakeup_reason() == kDifRstmgrResetInfoLowPowerExit);
+
+  LOG_INFO("SW has waken up.");
+  test_status_set(kTestStatusInWfi);
+  test_status_set(kTestStatusInTest);
+
+  // Sort of redundant secondary check
+  CHECK(has_wakeup_happened());
+  //check_wakeup_reason();
+  LOG_INFO("Test done.");
+
+
+  /*
   while (kTestPhase < kTestPhaseDone) {
     switch (kTestPhase) {
       case kTestPhaseInit:
-        pinmux_setup();
         break;
       case kTestPhaseDriveZero:
-        configure_wakeup();
         LOG_INFO("kTestPhaseDriveZero");
         break;
       case kTestPhaseWaitNoWakeup:
@@ -188,5 +233,7 @@ bool test_main(void) {
     }
     wait_next_test_phase();
   }
+  */
+
   return true;
 }

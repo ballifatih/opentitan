@@ -99,9 +99,25 @@ class chip_sw_sysrst_ctrl_ulp_z3_wakeup_vseq extends chip_sw_base_vseq;
     // due to lack of unused pins. Disable the default drive
     // to this pin.
     cfg.chip_vif.pinmux_wkup_if.drive_en_pin(0, 0);
-    write_test_phase(PHASE_INIT);
+
+    drive_zero_pads();
+
+    //`DV_WAIT(cfg.sw_logger_vif.printed_log == "sysrst_ctrl wakeup enabled.")
+
+    //`DV_WAIT(cfg.sw_logger_vif.printed_log == "No wakeup yet.")
     sync_with_sw();
 
+
+    `DV_WAIT(cfg.sw_test_status_vif.sw_test_status == SwTestStatusInWfi)
+
+    glitch_lid_open();
+    wait_wakeup_time();
+    sync_with_sw();
+
+    //`DV_WAIT(cfg.sw_logger_vif.printed_log == "SW has waken up.")
+    //check_wakeup_pin();
+
+    /*
     drive_zero_pads();
     write_test_phase(PHASE_DRIVE_ZERO);
     sync_with_sw();
@@ -121,6 +137,7 @@ class chip_sw_sysrst_ctrl_ulp_z3_wakeup_vseq extends chip_sw_base_vseq;
     sync_with_sw();
 
     write_test_phase(PHASE_DONE);
+    */
   endtask
 
 endclass : chip_sw_sysrst_ctrl_ulp_z3_wakeup_vseq
