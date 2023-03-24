@@ -101,6 +101,8 @@ static void test_kmac_with_sideloaded_key(dif_keymgr_t *keymgr,
   CHECK_DIF_OK(
       dif_keymgr_sideload_clear_set_enabled(keymgr, kDifToggleDisabled));
 
+  // Reconfigure KMAC to use the sideloaded key again.
+  kmac_testutils_config(kmac, false);
   kmac_testutils_kmac(kmac, kKmacMode, &kSoftwareKey, kCustomString,
                       kCustomStringLen, kKmacMessage, kKmacMessageLen,
                       kKmacOutputLen, output);
@@ -111,6 +113,7 @@ static void test_kmac_with_sideloaded_key(dif_keymgr_t *keymgr,
 
   // Sideload the same KMAC key again and check if we can compute the same
   // result as before.
+  kmac_testutils_config(kmac, true);
   CHECK_STATUS_OK(
       keymgr_testutils_generate_versioned_key(keymgr, sideload_params));
   LOG_INFO("Keymgr regenerated HW output for Kmac at OwnerIntKey State");
