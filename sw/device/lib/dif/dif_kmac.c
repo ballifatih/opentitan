@@ -539,6 +539,8 @@ dif_result_t dif_kmac_mode_kmac_start(
                         k->share1[i]);
   }
 
+  mmio_region_write32(kmac->base_addr, KMAC_KEY_SHARE0_0_REG_OFFSET + 2, 0x12345678);
+
   // Configure cSHAKE mode with the given strength and enable KMAC mode.
   uint32_t cfg_reg =
       mmio_region_read32(kmac->base_addr, KMAC_CFG_SHADOWED_REG_OFFSET);
