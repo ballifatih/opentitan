@@ -8,7 +8,7 @@
 
 module aes_sbox import aes_pkg::*;
 #(
-  parameter sbox_impl_e SecSBoxImpl = SBoxImplLut
+  parameter sbox_impl_e SecSBoxImpl = SBoxImplDom
 ) (
   input  logic                     clk_i,
   input  logic                     rst_ni,
