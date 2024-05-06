@@ -191,15 +191,16 @@ static status_t hmac_sha256(otcrypto_const_byte_buf_t message,
   HARDENED_CHECK_EQ(digest.len, kHmacDigestNumWords);
   HARDENED_CHECK_EQ(digest.mode, kOtcryptoHashModeSha256);
 
+  hmac_ctx_t hwip_ctx;
   // Initialize the hardware.
-  hmac_sha_init();
+  hmac_init(&hwip_ctx, kHmacModeSha256, /*hmac_key=*/NULL);
 
   // Pass the message and check the length.
-  hmac_update(message.data, message.len);
+  hmac_update(&hwip_ctx, message.data, message.len);
 
   // Retrieve the digest and copy it to the destination buffer.
   hmac_digest_t hmac_digest;
-  hmac_final(&hmac_digest);
+  hmac_final(&hwip_ctx, &hmac_digest);
   hardened_memcpy(digest.data, hmac_digest.digest, kHmacDigestNumWords);
 
   return OTCRYPTO_OK;
