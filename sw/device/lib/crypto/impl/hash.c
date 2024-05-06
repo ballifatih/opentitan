@@ -17,117 +17,41 @@
 #define MODULE_ID MAKE_MODULE_ID('h', 'a', 's')
 
 /**
- * Ensure that the hash context is large enough for all SHA2 state structs.
+ * Ensure that the hash context is large enough for HMAC driver struct.
  */
 static_assert(
-    sizeof(otcrypto_hash_context_t) >= sizeof(sha256_state_t),
-    "otcrypto_hash_context_t must be big enough to hold sha256_state_t");
-static_assert(
-    sizeof(otcrypto_hash_context_t) >= sizeof(sha384_state_t),
-    "otcrypto_hash_context_t must be big enough to hold sha384_state_t");
-static_assert(
-    sizeof(otcrypto_hash_context_t) >= sizeof(sha512_state_t),
-    "otcrypto_hash_context_t must be big enough to hold sha512_state_t");
+    sizeof(otcrypto_hash_context_t) >= sizeof(hmac_ctx_t),
+    "`otcrypto_hash_context_t` must be big enough to hold `hmac_ctx_t`.");
+
 /**
- * Ensure that all SHA2 state structs are suitable for `hardened_memcpy()`.
+ * Ensure that HMAC driver struct is suitable for `hardened_memcpy()`.
  */
-static_assert(sizeof(sha256_state_t) % sizeof(uint32_t) == 0,
-              "Size of sha256_state_t must be a multiple of the word size for "
+static_assert(sizeof(hmac_ctx_t) % sizeof(uint32_t) == 0,
+              "Size of `hmac_ctx_t` must be a multiple of the word size for "
               "`hardened_memcpy()`");
-static_assert(sizeof(sha384_state_t) % sizeof(uint32_t) == 0,
-              "Size of sha384_state_t must be a multiple of the word size for "
-              "`hardened_memcpy()`");
-static_assert(sizeof(sha512_state_t) % sizeof(uint32_t) == 0,
-              "Size of sha512_state_t must be a multiple of the word size for "
-              "`hardened_memcpy()`");
+
 /**
- * Save a SHA-256 state to a generic hash context.
+ * Save the internal HMAC driver context to a generic hash context.
  *
  * @param[out] ctx Generic hash context to copy to.
- * @param state SHA-256 context object.
+ * @param hmac_ctx The internal context object from HMAC driver.
  */
-static void sha256_state_save(otcrypto_hash_context_t *restrict ctx,
-                              const sha256_state_t *restrict state) {
-  // As per the `hardened_memcpy()` documentation, it is OK to cast to
-  // `uint32_t *` here as long as `state` is word-aligned, which it must be
-  // because all its fields are.
-  hardened_memcpy(ctx->data, (uint32_t *)state,
-                  sizeof(sha256_state_t) / sizeof(uint32_t));
+static void hmac_ctx_save(otcrypto_hash_context_t *restrict ctx,
+                          const hmac_ctx_t *restrict hmac_ctx) {
+  hardened_memcpy(ctx->data, (uint32_t *)hmac_ctx,
+                  sizeof(hmac_ctx_t) / sizeof(uint32_t));
 }
 
 /**
- * Restore a SHA-256 state from a generic hash context.
+ * Restore an internal HMAC driver context from a generic hash context.
  *
  * @param ctx Generic hash context to restore from.
- * @param[out] state Destination SHA-256 context object.
+ * @param[out] hmac_ctx Destination HMAC driver context object.
  */
-static void sha256_state_restore(const otcrypto_hash_context_t *restrict ctx,
-                                 sha256_state_t *restrict state) {
-  // As per the `hardened_memcpy()` documentation, it is OK to cast to
-  // `uint32_t *` here as long as `state` is word-aligned, which it must be
-  // because all its fields are.
-  hardened_memcpy((uint32_t *)state, ctx->data,
-                  sizeof(sha256_state_t) / sizeof(uint32_t));
-}
-
-/**
- * Save a SHA-384 state to a generic hash context.
- *
- * @param[out] ctx Generic hash context to copy to.
- * @param state SHA-384 context object.
- */
-static void sha384_state_save(otcrypto_hash_context_t *restrict ctx,
-                              const sha384_state_t *restrict state) {
-  // As per the `hardened_memcpy()` documentation, it is OK to cast to
-  // `uint32_t *` here as long as `state` is word-aligned, which it must be
-  // because all its fields are.
-  hardened_memcpy(ctx->data, (uint32_t *)state,
-                  sizeof(sha384_state_t) / sizeof(uint32_t));
-}
-
-/**
- * Restore a SHA-384 state from a generic hash context.
- *
- * @param ctx Generic hash context to restore from.
- * @param[out] state Destination SHA-384 context object.
- */
-static void sha384_state_restore(const otcrypto_hash_context_t *restrict ctx,
-                                 sha384_state_t *restrict state) {
-  // As per the `hardened_memcpy()` documentation, it is OK to cast to
-  // `uint32_t *` here as long as `state` is word-aligned, which it must be
-  // because all its fields are.
-  hardened_memcpy((uint32_t *)state, ctx->data,
-                  sizeof(sha384_state_t) / sizeof(uint32_t));
-}
-
-/**
- * Save a SHA-512 state to a generic hash context.
- *
- * @param[out] ctx Generic hash context to copy to.
- * @param state SHA-512 context object.
- */
-static void sha512_state_save(otcrypto_hash_context_t *restrict ctx,
-                              const sha512_state_t *restrict state) {
-  // As per the `hardened_memcpy()` documentation, it is OK to cast to
-  // `uint32_t *` here as long as `state` is word-aligned, which it must be
-  // because all its fields are.
-  hardened_memcpy(ctx->data, (uint32_t *)state,
-                  sizeof(sha512_state_t) / sizeof(uint32_t));
-}
-
-/**
- * Restore a SHA-512 state from a generic hash context.
- *
- * @param ctx Generic hash context to restore from.
- * @param[out] state Destination SHA-512 context object.
- */
-static void sha512_state_restore(const otcrypto_hash_context_t *restrict ctx,
-                                 sha512_state_t *restrict state) {
-  // As per the `hardened_memcpy()` documentation, it is OK to cast to
-  // `uint32_t *` here as long as `state` is word-aligned, which it must be
-  // because all its fields are.
-  hardened_memcpy((uint32_t *)state, ctx->data,
-                  sizeof(sha512_state_t) / sizeof(uint32_t));
+static void hmac_ctx_restore(const otcrypto_hash_context_t *restrict ctx,
+                             hmac_ctx_t *restrict hmac_ctx) {
+  hardened_memcpy((uint32_t *)hmac_ctx, ctx->data,
+                  sizeof(hmac_ctx_t) / sizeof(uint32_t));
 }
 
 /**
@@ -179,31 +103,6 @@ static status_t check_digest_len(otcrypto_hash_digest_t digest) {
   return OTCRYPTO_FATAL_ERR;
 }
 
-/**
- * Compute SHA256 using the HMAC hardware block.
- *
- * @param message Message to hash.
- * @param[out] digest Output digest.
- */
-OT_WARN_UNUSED_RESULT
-static status_t hmac_sha256(otcrypto_const_byte_buf_t message,
-                            otcrypto_hash_digest_t digest) {
-  HARDENED_CHECK_EQ(digest.len, kHmacSha256DigestWords);
-  HARDENED_CHECK_EQ(digest.mode, kOtcryptoHashModeSha256);
-
-  hmac_ctx_t hwip_ctx;
-  hmac_digest_t hmac_digest = {
-      .len = kHmacSha256DigestBytes,
-  };
-  HARDENED_TRY(hmac_init(&hwip_ctx, kHmacModeSha256, /*key=*/NULL));
-  HARDENED_TRY(hmac_update(&hwip_ctx, message.data, message.len));
-  HARDENED_TRY(hmac_final(&hwip_ctx, &hmac_digest));
-
-  hardened_memcpy(digest.data, hmac_digest.digest, kHmacSha256DigestWords);
-
-  return OTCRYPTO_OK;
-}
-
 otcrypto_status_t otcrypto_hash(otcrypto_const_byte_buf_t input_message,
                                 otcrypto_hash_digest_t digest) {
   if (input_message.data == NULL && input_message.len != 0) {
@@ -217,6 +116,10 @@ otcrypto_status_t otcrypto_hash(otcrypto_const_byte_buf_t input_message,
   // Check that digest length and mode match.
   HARDENED_TRY(check_digest_len(digest));
 
+  otcrypto_word32_buf_t hmac_digest = {
+      .data = digest.data,
+      .len = digest.len,
+  };
   switch (digest.mode) {
     case kOtcryptoHashModeSha3_224:
       return kmac_sha3_224(input_message.data, input_message.len, digest.data);
@@ -227,20 +130,22 @@ otcrypto_status_t otcrypto_hash(otcrypto_const_byte_buf_t input_message,
     case kOtcryptoHashModeSha3_512:
       return kmac_sha3_512(input_message.data, input_message.len, digest.data);
     case kOtcryptoHashModeSha256:
-      // Call the HMAC block driver in SHA-256 mode.
-      return hmac_sha256(input_message, digest);
+      return hmac_oneshot(kHmacModeSha256, /*key=*/NULL, input_message.data,
+                          input_message.len, &hmac_digest);
+      break;
     case kOtcryptoHashModeSha384:
-      return sha384(input_message.data, input_message.len, digest.data);
+      return hmac_oneshot(kHmacModeSha384, /*key=*/NULL, input_message.data,
+                          input_message.len, &hmac_digest);
+      break;
     case kOtcryptoHashModeSha512:
-      return sha512(input_message.data, input_message.len, digest.data);
+      return hmac_oneshot(kHmacModeSha512, /*key=*/NULL, input_message.data,
+                          input_message.len, &hmac_digest);
+      break;
     default:
       // Invalid hash mode.
       return OTCRYPTO_BAD_ARGS;
   }
-
-  // Should be unreachable.
-  HARDENED_TRAP();
-  return OTCRYPTO_FATAL_ERR;
+  return OTCRYPTO_OK;
 }
 
 otcrypto_status_t otcrypto_xof_shake(otcrypto_const_byte_buf_t input_message,
@@ -308,24 +213,18 @@ otcrypto_status_t otcrypto_hash_init(otcrypto_hash_context_t *const ctx,
     return OTCRYPTO_BAD_ARGS;
   }
 
-  ctx->mode = hash_mode;
+  hmac_ctx_t hmac_ctx;
   switch (hash_mode) {
     case kOtcryptoHashModeSha256: {
-      sha256_state_t state;
-      sha256_init(&state);
-      sha256_state_save(ctx, &state);
+      HARDENED_TRY(hmac_init(&hmac_ctx, kHmacModeSha256, /*hmac_key=*/NULL));
       break;
     }
     case kOtcryptoHashModeSha384: {
-      sha384_state_t state;
-      sha384_init(&state);
-      sha384_state_save(ctx, &state);
+      HARDENED_TRY(hmac_init(&hmac_ctx, kHmacModeSha384, /*hmac_key=*/NULL));
       break;
     }
     case kOtcryptoHashModeSha512: {
-      sha512_state_t state;
-      sha512_init(&state);
-      sha512_state_save(ctx, &state);
+      HARDENED_TRY(hmac_init(&hmac_ctx, kHmacModeSha512, /*hmac_key=*/NULL));
       break;
     }
     default:
@@ -333,6 +232,7 @@ otcrypto_status_t otcrypto_hash_init(otcrypto_hash_context_t *const ctx,
       return OTCRYPTO_BAD_ARGS;
   }
 
+  hmac_ctx_save(ctx, &hmac_ctx);
   return OTCRYPTO_OK;
 }
 
@@ -342,37 +242,10 @@ otcrypto_status_t otcrypto_hash_update(
   if (ctx == NULL || (input_message.data == NULL && input_message.len != 0)) {
     return OTCRYPTO_BAD_ARGS;
   }
-
-  switch (ctx->mode) {
-    case kOtcryptoHashModeSha256: {
-      sha256_state_t state;
-      sha256_state_restore(ctx, &state);
-      HARDENED_TRY(
-          sha256_update(&state, input_message.data, input_message.len));
-      sha256_state_save(ctx, &state);
-      break;
-    }
-    case kOtcryptoHashModeSha384: {
-      sha384_state_t state;
-      sha384_state_restore(ctx, &state);
-      HARDENED_TRY(
-          sha384_update(&state, input_message.data, input_message.len));
-      sha384_state_save(ctx, &state);
-      break;
-    }
-    case kOtcryptoHashModeSha512: {
-      sha512_state_t state;
-      sha512_state_restore(ctx, &state);
-      HARDENED_TRY(
-          sha512_update(&state, input_message.data, input_message.len));
-      sha512_state_save(ctx, &state);
-      break;
-    }
-    default:
-      // Unrecognized or unsupported hash mode.
-      return OTCRYPTO_BAD_ARGS;
-  }
-
+  hmac_ctx_t hmac_ctx;
+  hmac_ctx_restore(ctx, &hmac_ctx);
+  HARDENED_TRY(hmac_update(&hmac_ctx, input_message.data, input_message.len));
+  hmac_ctx_save(ctx, &hmac_ctx);
   return OTCRYPTO_OK;
 }
 
@@ -384,33 +257,15 @@ otcrypto_status_t otcrypto_hash_final(otcrypto_hash_context_t *const ctx,
 
   // Check that digest length and mode are consistent.
   HARDENED_TRY(check_digest_len(digest));
-  if (ctx->mode != digest.mode) {
-    return OTCRYPTO_BAD_ARGS;
-  }
 
-  switch (ctx->mode) {
-    case kOtcryptoHashModeSha256: {
-      sha256_state_t state;
-      sha256_state_restore(ctx, &state);
-      HARDENED_TRY(sha256_final(&state, digest.data));
-      break;
-    }
-    case kOtcryptoHashModeSha384: {
-      sha384_state_t state;
-      sha384_state_restore(ctx, &state);
-      HARDENED_TRY(sha384_final(&state, digest.data));
-      break;
-    }
-    case kOtcryptoHashModeSha512: {
-      sha512_state_t state;
-      sha512_state_restore(ctx, &state);
-      HARDENED_TRY(sha512_final(&state, digest.data));
-      break;
-    }
-    default:
-      // Unrecognized or unsupported hash mode.
-      return OTCRYPTO_BAD_ARGS;
-  }
-
+  hmac_ctx_t hmac_ctx;
+  otcrypto_word32_buf_t hmac_digest = {
+      .data = digest.data,
+      .len = digest.len,
+  };
+  hmac_ctx_restore(ctx, &hmac_ctx);
+  HARDENED_TRY(hmac_final(&hmac_ctx, &hmac_digest));
+  // TODO(#23191): Clear `ctx`.
+  hmac_ctx_save(ctx, &hmac_ctx);
   return OTCRYPTO_OK;
 }

@@ -19,17 +19,23 @@
 extern "C" {
 #endif  // __cplusplus
 
+enum {
+  /**
+   * The size of the publicly exposed HMAC context in words.
+   * We assert that this value is large enough to host the internal HMAC driver
+   * struct.
+   */
+  kOtcryptoHashCtxStructWords = 92,
+};
+
 /**
- * Generic hash context.
+ * Generic opaque hash context.
  *
  * Representation is internal to the hash implementation; initialize
  * with #otcrypto_hash_init.
  */
 typedef struct otcrypto_hash_context {
-  // Required hash mode.
-  otcrypto_hash_mode_t mode;
-  // Context for the hash operation.
-  uint32_t data[52];
+  uint32_t data[kOtcryptoHashCtxStructWords];
 } otcrypto_hash_context_t;
 
 /**
