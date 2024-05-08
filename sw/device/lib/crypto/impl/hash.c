@@ -55,6 +55,22 @@ static void sha256_state_save(otcrypto_hash_context_t *restrict ctx,
                   sizeof(sha256_state_t) / sizeof(uint32_t));
 }
 
+static void hwip_sha256_state_save(otcrypto_hash_context_t *restrict ctx,
+                              const hmac_ctx_t *restrict hwip_ctx) {
+  // As per the `hardened_memcpy()` documentation, it is OK to cast to
+  // `uint32_t *` here as long as `state` is word-aligned, which it must be
+  // because all its fields are.
+  memcpy(ctx->data, (uint8_t *) hwip_ctx, sizeof(hmac_ctx_t));
+}
+
+static void hwip_sha256_state_restore(const otcrypto_hash_context_t *restrict ctx,
+                              hmac_ctx_t *restrict hwip_ctx) {
+  // As per the `hardened_memcpy()` documentation, it is OK to cast to
+  // `uint32_t *` here as long as `state` is word-aligned, which it must be
+  // because all its fields are.
+  memcpy((uint8_t *) hwip_ctx, ctx->data, sizeof(hmac_ctx_t));
+}
+
 /**
  * Restore a SHA-256 state from a generic hash context.
  *
@@ -313,9 +329,9 @@ otcrypto_status_t otcrypto_hash_init(otcrypto_hash_context_t *const ctx,
   ctx->mode = hash_mode;
   switch (hash_mode) {
     case kOtcryptoHashModeSha256: {
-      sha256_state_t state;
-      sha256_init(&state);
-      sha256_state_save(ctx, &state);
+      hmac_ctx_t hwip_ctx;
+      hmac_init(&hwip_ctx, kHmacModeSha256, /*hmac_key=*/NULL);
+      hwip_sha256_state_save(ctx, &hwip_ctx);
       break;
     }
     case kOtcryptoHashModeSha384: {
@@ -347,11 +363,10 @@ otcrypto_status_t otcrypto_hash_update(
 
   switch (ctx->mode) {
     case kOtcryptoHashModeSha256: {
-      sha256_state_t state;
-      sha256_state_restore(ctx, &state);
-      HARDENED_TRY(
-          sha256_update(&state, input_message.data, input_message.len));
-      sha256_state_save(ctx, &state);
+      hmac_ctx_t hwip_ctx;
+      hwip_sha256_state_restore(ctx, &hwip_ctx);
+      hmac_update(&hwip_ctx, input_message.data, input_message.len);
+      hwip_sha256_state_save(ctx, &hwip_ctx);
       break;
     }
     case kOtcryptoHashModeSha384: {
@@ -392,9 +407,11 @@ otcrypto_status_t otcrypto_hash_final(otcrypto_hash_context_t *const ctx,
 
   switch (ctx->mode) {
     case kOtcryptoHashModeSha256: {
-      sha256_state_t state;
-      sha256_state_restore(ctx, &state);
-      HARDENED_TRY(sha256_final(&state, digest.data));
+      hmac_ctx_t hwip_ctx;
+      hmac_digest_t hmac_digest;
+      hwip_sha256_state_restore(ctx, &hwip_ctx);
+      hmac_final(&hwip_ctx, &hmac_digest);
+      hardened_memcpy(digest.data, hmac_digest.digest, kHmacDigestNumWords);
       break;
     }
     case kOtcryptoHashModeSha384: {

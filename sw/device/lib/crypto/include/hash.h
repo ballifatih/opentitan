@@ -29,7 +29,8 @@ typedef struct otcrypto_hash_context {
   // Required hash mode.
   otcrypto_hash_mode_t mode;
   // Context for the hash operation.
-  uint32_t data[52];
+  // generously large data buffer to accommodate hmac_ctx_t
+  uint32_t data[128];
 } otcrypto_hash_context_t;
 
 /**
