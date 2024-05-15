@@ -40,6 +40,9 @@ typedef enum otcrypto_kmac_mode {
 typedef struct otcrypto_hmac_context {
   otcrypto_hash_context_t inner;
   otcrypto_hash_context_t outer;
+  // Context for the hash operation.
+  // generously large data buffer to accommodate hmac_ctx_t
+  uint32_t data[128];
 } otcrypto_hmac_context_t;
 
 /**

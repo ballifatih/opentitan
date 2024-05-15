@@ -148,11 +148,21 @@ otcrypto_status_t otcrypto_hmac_init(otcrypto_hmac_context_t *ctx,
   size_t digest_words = 0;
   size_t message_block_words = 0;
   otcrypto_hash_mode_t hash_mode;
+  hmac_ctx_t hwip_ctx;
+  hmac_key_t hmac_key;
   switch (key->config.key_mode) {
     case kOtcryptoKeyModeHmacSha256:
-      hash_mode = kOtcryptoHashModeSha256;
-      digest_words = kSha256DigestWords;
-      message_block_words = kSha256MessageBlockWords;
+      /* handle and return right away */
+      // TODO: handle varying key sizes
+      for(size_t i = 0; i < 8; i++) {
+        hmac_key.key[i] = key->keyblob[i] ^ key->keyblob[i+8];
+      }
+      hmac_key.len = 32;
+      hmac_init(&hwip_ctx, kHmacModeHmac256, &hmac_key);
+      // hwip_sha256_state_save(ctx, &hwip_ctx);
+      memcpy(ctx->data, (uint8_t *) &hwip_ctx, sizeof(hmac_ctx_t));
+      return OTCRYPTO_OK;
+      
       break;
     case kOtcryptoKeyModeHmacSha384:
       hash_mode = kOtcryptoHashModeSha384;
@@ -255,6 +265,14 @@ otcrypto_status_t otcrypto_hmac_update(
     return OTCRYPTO_BAD_ARGS;
   }
 
+  hmac_ctx_t hwip_ctx;
+  // hwip_sha256_state_restore(ctx, &hwip_ctx);
+  memcpy((uint8_t *) &hwip_ctx, ctx->data, sizeof(hmac_ctx_t));
+  hmac_update(&hwip_ctx, input_message.data, input_message.len);
+  // hwip_sha256_state_save(ctx, &hwip_ctx);
+  memcpy(ctx->data, (uint8_t *) &hwip_ctx, sizeof(hmac_ctx_t));
+  return OTCRYPTO_OK;
+
   // Append the message to the inner block.
   return otcrypto_hash_update(&ctx->inner, input_message);
 }
@@ -264,6 +282,18 @@ otcrypto_status_t otcrypto_hmac_final(otcrypto_hmac_context_t *const ctx,
   if (ctx == NULL || tag.data == NULL) {
     return OTCRYPTO_BAD_ARGS;
   }
+
+  hmac_ctx_t hwip_ctx;
+  hmac_digest_t digest;
+  // hwip_sha256_state_restore(ctx, &hwip_ctx);
+  memcpy((uint8_t *) &hwip_ctx, ctx->data, sizeof(hmac_ctx_t));
+  hmac_final(&hwip_ctx, &digest);
+  // TODO discard the state
+  for(size_t i = 0; i<8; i++) {
+    tag.data[i] = digest.digest[i];
+  }
+  tag.len = digest.len / 4;
+  return OTCRYPTO_OK;
 
   // Create digest buffer that points to the tag.
   otcrypto_hash_digest_t digest_buf = {

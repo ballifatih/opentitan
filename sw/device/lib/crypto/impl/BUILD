@@ -206,11 +206,13 @@ cc_library(
     hdrs = [
         "//sw/device/lib/crypto/include:mac.h",
     ],
+    target_compatible_with = [OPENTITAN_CPU],
     deps = [
         ":hash",
         ":integrity",
         ":keyblob",
         "//sw/device/lib/base:hardened",
+        "//sw/device/lib/crypto/drivers:hmac",
         "//sw/device/lib/crypto/drivers:kmac",
         "//sw/device/lib/crypto/impl/sha2:sha256",
         "//sw/device/lib/crypto/impl/sha2:sha512",
