@@ -205,7 +205,7 @@ module hmac
       // Allow updating secret key only when the engine is in Idle.
       for (int i = 0; i < 32; i++) begin
         if (reg2hw.key[31-i].qe) begin
-          secret_key_d[32*i+:32] = reg2hw.key[31-i].q;
+          secret_key_d[32*i+:32] = conv_endian32(reg2hw.key[31-i].q, digest_swap);
         end
       end
     end
