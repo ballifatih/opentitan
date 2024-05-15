@@ -17,15 +17,103 @@
 // Module ID for status codes.
 #define MODULE_ID MAKE_MODULE_ID('m', 'a', 'c')
 
+/**
+ * Ensure that the hash context is large enough for HMAC driver struct.
+ */
+static_assert(
+    sizeof(otcrypto_hmac_context_t) >= sizeof(hmac_ctx_t),
+    "`otcrypto_hash_context_t` must be big enough to hold `hmac_ctx_t`.");
+
+/**
+ * Ensure that HMAC driver struct is suitable for `hardened_memcpy()`.
+ */
+static_assert(sizeof(hmac_ctx_t) % sizeof(uint32_t) == 0,
+              "Size of `hmac_ctx_t` must be a multiple of the word size for "
+              "`hardened_memcpy()`");
+
+/**
+ * Save the internal HMAC driver context to a generic Hmac context.
+ *
+ * @param[out] ctx Generic hash context to copy to.
+ * @param hmac_ctx The internal context object from HMAC driver.
+ */
+static void hmac_ctx_save(otcrypto_hmac_context_t *restrict ctx,
+                          const hmac_ctx_t *restrict hmac_ctx) {
+  hardened_memcpy(ctx->data, (uint32_t *)hmac_ctx,
+                  sizeof(hmac_ctx_t) / sizeof(uint32_t));
+}
+
+/**
+ * Restore an internal HMAC driver context from a generic Hmac context.
+ *
+ * @param ctx Generic hash context to restore from.
+ * @param[out] hmac_ctx Destination HMAC driver context object.
+ */
+static void hmac_ctx_restore(const otcrypto_hmac_context_t *restrict ctx,
+                             hmac_ctx_t *restrict hmac_ctx) {
+  hardened_memcpy((uint32_t *)hmac_ctx, ctx->data,
+                  sizeof(hmac_ctx_t) / sizeof(uint32_t));
+}
+
+static status_t get_hmac_mode(otcrypto_key_mode_t key_mode,
+                              hmac_mode_t *hmac_mode) {
+  switch (key_mode) {
+    case kOtcryptoKeyModeHmacSha256:
+      *hmac_mode = kHmacModeHmac256;
+      break;
+    case kOtcryptoKeyModeHmacSha384:
+      *hmac_mode = kHmacModeHmac384;
+      break;
+    case kOtcryptoKeyModeHmacSha512:
+      *hmac_mode = kHmacModeHmac512;
+      break;
+    default:
+      return OTCRYPTO_BAD_ARGS;
+  }
+  return OTCRYPTO_OK;
+}
+
 OT_WARN_UNUSED_RESULT
 otcrypto_status_t otcrypto_hmac(const otcrypto_blinded_key_t *key,
                                 otcrypto_const_byte_buf_t input_message,
                                 otcrypto_word32_buf_t tag) {
-  // Compute HMAC using the streaming API.
-  otcrypto_hmac_context_t ctx;
-  HARDENED_TRY(otcrypto_hmac_init(&ctx, key));
-  HARDENED_TRY(otcrypto_hmac_update(&ctx, input_message));
-  return otcrypto_hmac_final(&ctx, tag);
+  // Validate key struct.
+  if (key == NULL || key->keyblob == NULL || tag.data == NULL) {
+    return OTCRYPTO_BAD_ARGS;
+  }
+  if (key->config.hw_backed != kHardenedBoolFalse) {
+    // TODO(#15590): Add support for sideloaded keys via a custom OTBN program.
+    return OTCRYPTO_NOT_IMPLEMENTED;
+  }
+  if (key->config.security_level != kOtcryptoKeySecurityLevelLow) {
+    // TODO: Harden SHA2 implementations.
+    return OTCRYPTO_NOT_IMPLEMENTED;
+  }
+
+  // Check for null input message with nonzero length.
+  if (input_message.data == NULL && input_message.len != 0) {
+    return OTCRYPTO_BAD_ARGS;
+  }
+
+  // TODO: Once we have hardened SHA2, do not unmask the key here.
+  size_t unmasked_key_len = keyblob_share_num_words(key->config);
+  uint32_t unmasked_key[unmasked_key_len];
+  HARDENED_TRY(keyblob_key_unmask(key, unmasked_key_len, unmasked_key));
+  otcrypto_const_word32_buf_t hmac_key = {
+      .data = unmasked_key,
+      .len = unmasked_key_len,
+  };
+
+  hmac_mode_t hmac_mode;
+  HARDENED_TRY(get_hmac_mode(key->config.key_mode, &hmac_mode));
+
+  otcrypto_word32_buf_t hmac_digest = {
+      .data = tag.data,
+      .len = tag.len,
+  };
+
+  return hmac_oneshot(hmac_mode, &hmac_key, input_message.data,
+                      input_message.len, &hmac_digest);
 }
 
 OT_WARN_UNUSED_RESULT
@@ -143,109 +231,24 @@ otcrypto_status_t otcrypto_hmac_init(otcrypto_hmac_context_t *ctx,
     return OTCRYPTO_NOT_IMPLEMENTED;
   }
 
+  // TODO: Once we have hardened SHA2, do not unmask the key here.
+  size_t unmasked_key_len = keyblob_share_num_words(key->config);
+  uint32_t unmasked_key[unmasked_key_len];
+  HARDENED_TRY(keyblob_key_unmask(key, unmasked_key_len, unmasked_key));
+  otcrypto_const_word32_buf_t hmac_key = {
+      .data = unmasked_key,
+      .len = unmasked_key_len,
+  };
+
   // Ensure the key is for HMAC and the hash function matches, and remember the
   // digest and message block sizes.
-  size_t digest_words = 0;
-  size_t message_block_words = 0;
-  otcrypto_hash_mode_t hash_mode;
-  switch (key->config.key_mode) {
-    case kOtcryptoKeyModeHmacSha256:
-      hash_mode = kOtcryptoHashModeSha256;
-      digest_words = kSha256DigestWords;
-      message_block_words = kSha256MessageBlockWords;
-      break;
-    case kOtcryptoKeyModeHmacSha384:
-      hash_mode = kOtcryptoHashModeSha384;
-      digest_words = kSha384DigestWords;
-      // Since SHA-512 and SHA-384 have the same core, they use the same
-      // message block size.
-      message_block_words = kSha512MessageBlockWords;
-      break;
-    case kOtcryptoKeyModeHmacSha512:
-      hash_mode = kOtcryptoHashModeSha512;
-      digest_words = kSha512DigestWords;
-      message_block_words = kSha512MessageBlockWords;
-      break;
-    default:
-      return OTCRYPTO_BAD_ARGS;
-  }
-  HARDENED_CHECK_NE(digest_words, 0);
-  HARDENED_CHECK_NE(message_block_words, 0);
-  HARDENED_CHECK_LE(digest_words, message_block_words);
+  hmac_mode_t hmac_mode;
+  HARDENED_TRY(get_hmac_mode(key->config.key_mode, &hmac_mode));
 
-  // Check the integrity of the key.
-  if (integrity_blinded_key_check(key) != kHardenedBoolTrue) {
-    return OTCRYPTO_BAD_ARGS;
-  }
-
-  // Get pointers to key shares.
-  uint32_t *share0;
-  uint32_t *share1;
-  HARDENED_TRY(keyblob_to_shares(key, &share0, &share1));
-
-  // TODO: Once we have hardened SHA2, do not unmask the key here.
-  uint32_t unmasked_key[keyblob_share_num_words(key->config)];
-  for (size_t i = 0; i < keyblob_share_num_words(key->config); i++) {
-    unmasked_key[i] = share0[i] ^ share1[i];
-  }
-
-  // Initialize the key block, K0. See FIPS 198-1, section 4.
-  uint32_t k0[message_block_words];
-  memset(k0, 0, sizeof(k0));
-  if (key->config.key_length <= message_block_words * sizeof(uint32_t)) {
-    // If the key fits into the message block size, we just need to copy it
-    // into the first part of K0.
-    hardened_memcpy(k0, unmasked_key, ARRAYSIZE(unmasked_key));
-    // If the key size isn't a multiple of the word size, zero the last few
-    // bytes.
-    size_t offset = key->config.key_length % sizeof(uint32_t);
-    if (offset != 0) {
-      unsigned char *k0_bytes = (unsigned char *)k0;
-      size_t num_zero_bytes = sizeof(uint32_t) - offset;
-      unsigned char *dest = k0_bytes + (sizeof(unmasked_key) - num_zero_bytes);
-      memset(dest, 0, num_zero_bytes);
-    }
-  } else {
-    // If the key is longer than the hash function block size, we need to hash
-    // it and write the digest into the start of K0.
-    otcrypto_hash_digest_t key_digest = {
-        .len = digest_words,
-        .data = k0,
-        .mode = hash_mode,
-    };
-    HARDENED_TRY(otcrypto_hash(
-        (otcrypto_const_byte_buf_t){
-            .len = key->config.key_length,
-            .data = (unsigned char *)unmasked_key,
-        },
-        key_digest));
-  }
-
-  // Compute (K0 ^ ipad).
-  uint32_t inner_block[message_block_words];
-  for (size_t i = 0; i < message_block_words; i++) {
-    inner_block[i] = k0[i] ^ 0x36363636;
-  }
-
-  // Compute (K0 ^ opad).
-  uint32_t outer_block[message_block_words];
-  for (size_t i = 0; i < message_block_words; i++) {
-    outer_block[i] = k0[i] ^ 0x5c5c5c5c;
-  }
-
-  // Start computing inner hash = H(K0 ^ ipad) || message).
-  HARDENED_TRY(otcrypto_hash_init(&ctx->inner, hash_mode));
-  HARDENED_TRY(otcrypto_hash_update(
-      &ctx->inner,
-      (otcrypto_const_byte_buf_t){.len = sizeof(inner_block),
-                                  .data = (unsigned char *)inner_block}));
-
-  // Start computing outer hash = H(K0 ^ opad || inner).
-  HARDENED_TRY(otcrypto_hash_init(&ctx->outer, hash_mode));
-  return otcrypto_hash_update(
-      &ctx->outer,
-      (otcrypto_const_byte_buf_t){.len = sizeof(outer_block),
-                                  .data = (unsigned char *)outer_block});
+  hmac_ctx_t hmac_ctx;
+  HARDENED_TRY(hmac_init(&hmac_ctx, hmac_mode, &hmac_key));
+  hmac_ctx_save(ctx, &hmac_ctx);
+  return OTCRYPTO_OK;
 }
 
 otcrypto_status_t otcrypto_hmac_update(
@@ -255,8 +258,16 @@ otcrypto_status_t otcrypto_hmac_update(
     return OTCRYPTO_BAD_ARGS;
   }
 
-  // Append the message to the inner block.
-  return otcrypto_hash_update(&ctx->inner, input_message);
+  // Check for null input message with nonzero length.
+  if (input_message.data == NULL && input_message.len != 0) {
+    return OTCRYPTO_BAD_ARGS;
+  }
+
+  hmac_ctx_t hmac_ctx;
+  hmac_ctx_restore(ctx, &hmac_ctx);
+  HARDENED_TRY(hmac_update(&hmac_ctx, input_message.data, input_message.len));
+  hmac_ctx_save(ctx, &hmac_ctx);
+  return OTCRYPTO_OK;
 }
 
 otcrypto_status_t otcrypto_hmac_final(otcrypto_hmac_context_t *const ctx,
@@ -265,23 +276,14 @@ otcrypto_status_t otcrypto_hmac_final(otcrypto_hmac_context_t *const ctx,
     return OTCRYPTO_BAD_ARGS;
   }
 
-  // Create digest buffer that points to the tag.
-  otcrypto_hash_digest_t digest_buf = {
-      .mode = ctx->inner.mode,
-      .len = tag.len,
+  hmac_ctx_t hmac_ctx;
+  otcrypto_word32_buf_t hmac_digest = {
       .data = tag.data,
+      .len = tag.len,
   };
-
-  // Finalize the computation of the inner hash = H(K0 ^ ipad || message) and
-  // store it in `tag` temporarily.
-  HARDENED_TRY(otcrypto_hash_final(&ctx->inner, digest_buf));
-
-  // Finalize the computation of the outer hash
-  //    = H(K0 ^ opad || H(K0 ^ ipad || message)).
-  HARDENED_TRY(otcrypto_hash_update(
-      &ctx->outer,
-      (otcrypto_const_byte_buf_t){.len = sizeof(uint32_t) * tag.len,
-                                  .data = (unsigned char *)tag.data}));
-
-  return otcrypto_hash_final(&ctx->outer, digest_buf);
+  hmac_ctx_restore(ctx, &hmac_ctx);
+  HARDENED_TRY(hmac_final(&hmac_ctx, &hmac_digest));
+  // TODO(#23191): Clear `ctx`.
+  hmac_ctx_save(ctx, &hmac_ctx);
+  return OTCRYPTO_OK;
 }

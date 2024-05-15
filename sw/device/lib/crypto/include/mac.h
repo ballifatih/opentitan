@@ -32,15 +32,12 @@ typedef enum otcrypto_kmac_mode {
 } otcrypto_kmac_mode_t;
 
 /**
- * Generic hmac context.
+ * Generic opaque Hmac context.
  *
- * Representation is internal to the hmac implementation; initialize
+ * Representation is internal to the hash implementation; initialize
  * with #otcrypto_hmac_init.
  */
-typedef struct otcrypto_hmac_context {
-  otcrypto_hash_context_t inner;
-  otcrypto_hash_context_t outer;
-} otcrypto_hmac_context_t;
+typedef otcrypto_hash_context_t otcrypto_hmac_context_t;
 
 /**
  * Performs the HMAC function on the input data.
