@@ -34,6 +34,9 @@ static status_t run_test_vector(void) {
   current_test_vector->key.checksum = 
       integrity_blinded_checksum(&current_test_vector->key);
 
+  otcrypto_hmac_context_t hmac_ctx;
+  otcrypto_hash_context_t hash_ctx;
+
   // TODO handle larger digest sizes.
   uint32_t act_tag[8];
   otcrypto_word32_buf_t tag_buf = {
@@ -45,10 +48,29 @@ static status_t run_test_vector(void) {
     .data = act_tag,
     .len = 8,
   };
+  size_t break_index = current_test_vector->message.len / 2;
+  otcrypto_const_byte_buf_t msg_part1 = {
+    .data = current_test_vector->message.data,
+    .len = break_index,
+  };
+  otcrypto_const_byte_buf_t msg_part2 = {
+    .data = &current_test_vector->message.data[break_index],
+    .len = current_test_vector->message.len - break_index,
+  }; 
   if(current_test_vector->test_operation == kHmacTestOperationSha256) {
-    TRY(otcrypto_hash(current_test_vector->message, hash_digest));
+    //TRY(otcrypto_hash(current_test_vector->message, hash_digest));
+    TRY(otcrypto_hash_init(&hash_ctx, kOtcryptoHashModeSha256));
+    TRY(otcrypto_hash_update(&hash_ctx, msg_part1));
+    TRY(otcrypto_hash_update(&hash_ctx, msg_part2));
+    TRY(otcrypto_hash_final(&hash_ctx, hash_digest));
   } else if (current_test_vector->test_operation == kHmacTestOperationHmacSha256) {
-    TRY(otcrypto_hmac(&current_test_vector->key, current_test_vector->message, tag_buf));
+    //TRY(otcrypto_hmac(&current_test_vector->key, current_test_vector->message, tag_buf));
+    
+    TRY(otcrypto_hmac_init(&hmac_ctx, &current_test_vector->key));
+    TRY(otcrypto_hmac_update(&hmac_ctx, msg_part1));
+    TRY(otcrypto_hmac_update(&hmac_ctx, msg_part2));
+    TRY(otcrypto_hmac_final(&hmac_ctx, tag_buf));
+
   }
   TRY_CHECK_ARRAYS_EQ(act_tag, current_test_vector->digest.data, 8);    
   return OTCRYPTO_OK;
