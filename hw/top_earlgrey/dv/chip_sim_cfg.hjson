@@ -2018,6 +2018,12 @@
       en_run_modes: ["sw_test_mode_test_rom"]
       run_opts: ["+en_jitter=1", "+cal_sys_clk_70mhz=1"]
     }
+      {
+	      name: chip_sw_hmac
+	      uvm_test_seq: chip_sw_base_vseq
+	      sw_images: ["//sw/device/tests/crypto:hmac_functest:1:new_rules"]
+	      en_run_modes: ["sw_test_mode_test_rom"]
+	    }
     {
       name: chip_sw_keymgr_key_derivation_jitter_en_reduced_freq
       uvm_test_seq: chip_sw_keymgr_key_derivation_vseq
