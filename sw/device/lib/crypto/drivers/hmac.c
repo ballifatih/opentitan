@@ -218,43 +218,43 @@ status_t hmac_init(hmac_ctx_t *ctx, const hmac_mode_t hmac_mode, const hmac_key_
       ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_DIGEST_SIZE_FIELD,
                                HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_256);
       ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_HMAC_EN_BIT, false);
-      ctx-> msg_block_len = 512 / 8;
-      ctx-> digest_len = 256 / 8;
+      ctx->msg_block_len = 512 / 8;
+      ctx->digest_len = 256 / 8;
       break;
     case kHmacModeSha384:
       ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_DIGEST_SIZE_FIELD,
                                HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_384);
       ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_HMAC_EN_BIT, false);
-      ctx-> msg_block_len = 1024 / 8;
-      ctx-> digest_len = 384 / 8;
+      ctx->msg_block_len = 1024 / 8;
+      ctx->digest_len = 384 / 8;
       break;
     case kHmacModeSha512:
       ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_DIGEST_SIZE_FIELD,
                               HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_512);
       ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_HMAC_EN_BIT, false);
-      ctx-> msg_block_len = 1024 / 8;
-      ctx-> digest_len = 512 / 8;
+      ctx->msg_block_len = 1024 / 8;
+      ctx->digest_len = 512 / 8;
       break;
     case kHmacModeHmac256:
       ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_DIGEST_SIZE_FIELD,
                                HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_256);
       ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_HMAC_EN_BIT, true);
-      ctx-> msg_block_len = 512 / 8;
-      ctx-> digest_len = 256 / 8;
+      ctx->msg_block_len = 512 / 8;
+      ctx->digest_len = 256 / 8;
       break;
     case kHmacModeHmac384:
       ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_DIGEST_SIZE_FIELD,
                                HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_384);
       ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_HMAC_EN_BIT, true);
-      ctx-> msg_block_len = 1024 / 8;
-      ctx-> digest_len = 384 / 8;
+      ctx->msg_block_len = 1024 / 8;
+      ctx->digest_len = 384 / 8;
       break;
     case kHmacModeHmac512:
       ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_DIGEST_SIZE_FIELD,
                                HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_512);
       ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_HMAC_EN_BIT, true);
-      ctx-> msg_block_len = 1024 / 8;
-      ctx-> digest_len = 512 / 8;
+      ctx->msg_block_len = 1024 / 8;
+      ctx->digest_len = 512 / 8;
       break;
     default:
       return OTCRYPTO_BAD_ARGS;
