@@ -117,63 +117,6 @@ static void hmac_hwip_clear(void) {
 }
 
 /**
- * Update `CFG` register based on the passed `ctx`. This function updates all
- * fields of `CFG` except `sha_en`.
- *
- * The driver does not expose endianness options, therefore `digest_swap` and
- * `endian_swap` bits are hardcoded,
- *
- * @param ctx A pointer to the context which determines the CFG values to be
- * written.
- */
-static void write_config_to_csr(const hmac_ctx_t *ctx) {
-  uint32_t cfg_reg = HMAC_CFG_REG_RESVAL;
-
-  // The endianness is fixed at driver level and not exposed to the caller.
-  // Digest should be big-endian to match the SHA-256 specification.
-  cfg_reg = bitfield_bit32_write(cfg_reg, HMAC_CFG_DIGEST_SWAP_BIT, true);
-  // Message should be little-endian to match Ibex's endianness.
-  cfg_reg = bitfield_bit32_write(cfg_reg, HMAC_CFG_ENDIAN_SWAP_BIT, false);
-
-  // We need to keep `sha_en` low until context is restored, see #23014.
-  cfg_reg = bitfield_bit32_write(cfg_reg, HMAC_CFG_SHA_EN_BIT, false);
-  if (launder32(ctx->enable_hmac) == kHardenedBoolTrue) {
-    HARDENED_CHECK_EQ(ctx->enable_hmac, kHardenedBoolTrue);
-    cfg_reg = bitfield_bit32_write(cfg_reg, HMAC_CFG_HMAC_EN_BIT, true);
-  } else {
-    HARDENED_CHECK_EQ(ctx->enable_hmac, kHardenedBoolFalse);
-    cfg_reg = bitfield_bit32_write(cfg_reg, HMAC_CFG_HMAC_EN_BIT, false);
-  }
-
-  // TODO remove hardcoded digest size
-  cfg_reg = bitfield_field32_write(cfg_reg, HMAC_CFG_DIGEST_SIZE_FIELD,
-                               ctx->digest_len);
-                               
- // TODO remove hardcoded key size
-  cfg_reg = bitfield_field32_write(cfg_reg, HMAC_CFG_KEY_LENGTH_FIELD,
-                               ctx->key_len);
-
-  abs_mmio_write32(kHmacBaseAddr + HMAC_CFG_REG_OFFSET, cfg_reg);
-}
-
-/**
- * Write the key into key registers.
- *
- * The key words and the key length are inferred from `ctx`. This function
- * should only be called during HMAC functions, but not SHA2.
- *
- * @param ctx A pointer to the context which determines the CFG values to be
- * written.
- * @param word_len The size of the key in 32-bit words.
- */
-static void write_key(uint32_t *key, size_t word_len) {
-  // TODO: A potential point to harden.
-  for(size_t i = 0; i < word_len; i++) {
-    abs_mmio_write32(kHmacBaseAddr + HMAC_KEY_0_REG_OFFSET + 4*i, key[i]);
-  }
-}
-
-/**
  * Restore the internal state of HWIP from `ctx` struct, and resume the
  * operation.
  *
@@ -185,23 +128,24 @@ static void write_key(uint32_t *key, size_t word_len) {
  * context (i.e. `ctx->hw_started = true`), then this state is restored.
  */
 static void restore_context(hmac_ctx_t *ctx) {
-  write_config_to_csr(ctx);
+  // Restore CFG register from `ctx`.
+  abs_mmio_write32(kHmacBaseAddr + HMAC_CFG_REG_OFFSET, ctx->cfg_reg);
 
   uint32_t cmd_reg = HMAC_CMD_REG_RESVAL;
   // Decide if we need to invoke `start` or `continue` command.
 
-  // TODO handle other key sizes
-  if (ctx->enable_hmac == kHardenedBoolTrue) {
-    write_key(ctx->key, 8);
+  // Write to KEY registers for HMAC operations. If the operation is SHA-2,
+  // `key_len` is set to 0 during `ctx` initialization.
+  for(size_t i = 0; i < ctx->key_len; i++) {
+    abs_mmio_write32(kHmacBaseAddr + HMAC_KEY_0_REG_OFFSET + 4*i, ctx->key[i]);
   }
-
 
   if(ctx->hw_started) {
       cmd_reg = bitfield_bit32_write(cmd_reg, HMAC_CMD_HASH_CONTINUE_BIT, 1);
 
       // TODO: Remove hard coded digest len.
       // TODO: Could be hardened for HMAC.
-      for(size_t i = 0; i < 8; i++) {
+      for(size_t i = 0; i < kHmacMaxDigestWords; i++) {
         abs_mmio_write32(kHmacBaseAddr + HMAC_DIGEST_0_REG_OFFSET + 4*i, ctx->H[i]);
       }
       abs_mmio_write32(kHmacBaseAddr + HMAC_MSG_LENGTH_LOWER_REG_OFFSET, ctx->lower);
@@ -219,7 +163,6 @@ static void restore_context(hmac_ctx_t *ctx) {
 
   // Now we can finally write the command to the register.
   abs_mmio_write32(kHmacBaseAddr + HMAC_CMD_REG_OFFSET, cmd_reg);
-
 }
 
 /**
@@ -231,16 +174,8 @@ static void restore_context(hmac_ctx_t *ctx) {
 static void save_context(hmac_ctx_t *ctx) {
   // TODO handle various block sizes
 
-  // TODO handle other key sizes
-  /*if (ctx->enable_hmac == kHardenedBoolTrue) {
-    for(size_t i = 0; i < 8; i++) {
-      ctx->key[i] = abs_mmio_read32(kHmacBaseAddr + HMAC_KEY_0_REG_OFFSET + 4*i);
-    }
-  }
-  */
-
   // TODO: could be hardened.
-  for(size_t i = 0; i < 8; i++) {
+  for(size_t i = 0; i < kHmacMaxDigestWords; i++) {
     ctx->H[i] = abs_mmio_read32(kHmacBaseAddr + HMAC_DIGEST_0_REG_OFFSET + 4*i);
   }
   ctx->lower = abs_mmio_read32(kHmacBaseAddr + HMAC_MSG_LENGTH_LOWER_REG_OFFSET);
@@ -257,34 +192,119 @@ static void write_to_msg_fifo(const uint8_t *msg, size_t msg_len) {
   }
 }
 
-void hmac_init(hmac_ctx_t *ctx, const hmac_mode_t hmac_mode, const hmac_key_t *key) {
+OT_WARN_UNUSED_RESULT
+status_t hmac_init(hmac_ctx_t *ctx, const hmac_mode_t hmac_mode, const hmac_key_t *key) {
 
-  // TODO Check SHA/HMAC before storing key.
-  // Use hmac_mode instead
-  if(key != NULL) {
-    for(size_t i = 0; i < key->len / 4; i++) {
+  if (ctx == NULL) {
+    return OTCRYPTO_BAD_ARGS;
+  }
+
+  // TODO zeroize all fields of ctx
+  //memset(ctx, 0, sizeof(hmac_ctx_t));
+
+  // Prepare cfg_reg in context.
+  ctx->cfg_reg = HMAC_CFG_REG_RESVAL;
+  // The endianness is fixed at driver level and not exposed to the caller.
+  // Digest should be big-endian to match the SHA-256 specification.
+  ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_DIGEST_SWAP_BIT, true);
+  // Message should be little-endian to match Ibex's endianness.
+  ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_ENDIAN_SWAP_BIT, false);
+
+  // We need to keep `sha_en` low until context is restored, see #23014.
+  ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_SHA_EN_BIT, false);
+
+  switch (hmac_mode) {
+    case kHmacModeSha256:
+      ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_DIGEST_SIZE_FIELD,
+                               HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_256);
+      ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_HMAC_EN_BIT, false);
+      ctx-> msg_block_len = 512 / 8;
+      ctx-> digest_len = 256 / 8;
+      break;
+    case kHmacModeSha384:
+      ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_DIGEST_SIZE_FIELD,
+                               HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_384);
+      ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_HMAC_EN_BIT, false);
+      ctx-> msg_block_len = 1024 / 8;
+      ctx-> digest_len = 384 / 8;
+      break;
+    case kHmacModeSha512:
+      ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_DIGEST_SIZE_FIELD,
+                              HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_512);
+      ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_HMAC_EN_BIT, false);
+      ctx-> msg_block_len = 1024 / 8;
+      ctx-> digest_len = 512 / 8;
+      break;
+    case kHmacModeHmac256:
+      ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_DIGEST_SIZE_FIELD,
+                               HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_256);
+      ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_HMAC_EN_BIT, true);
+      ctx-> msg_block_len = 512 / 8;
+      ctx-> digest_len = 256 / 8;
+      break;
+    case kHmacModeHmac384:
+      ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_DIGEST_SIZE_FIELD,
+                               HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_384);
+      ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_HMAC_EN_BIT, true);
+      ctx-> msg_block_len = 1024 / 8;
+      ctx-> digest_len = 384 / 8;
+      break;
+    case kHmacModeHmac512:
+      ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_DIGEST_SIZE_FIELD,
+                               HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_512);
+      ctx->cfg_reg = bitfield_bit32_write(ctx->cfg_reg, HMAC_CFG_HMAC_EN_BIT, true);
+      ctx-> msg_block_len = 1024 / 8;
+      ctx-> digest_len = 512 / 8;
+      break;
+    default:
+      return OTCRYPTO_BAD_ARGS;
+  }
+  
+  if (hmac_mode == kHmacModeHmac256 || hmac_mode == kHmacModeHmac384 ||
+      hmac_mode == kHmacModeHmac512) {
+    if (key == NULL) {
+      return OTCRYPTO_BAD_ARGS;
+    }
+    switch (key->len) {
+      case 128 / 8:
+        ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_KEY_LENGTH_FIELD, HMAC_CFG_KEY_LENGTH_VALUE_KEY_128);
+        break;
+      case 256 / 8:
+        ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_KEY_LENGTH_FIELD, HMAC_CFG_KEY_LENGTH_VALUE_KEY_256);
+        break;
+      case 384 / 8:
+        ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_KEY_LENGTH_FIELD, HMAC_CFG_KEY_LENGTH_VALUE_KEY_384);
+        break;
+      case 512 / 8:
+        ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_KEY_LENGTH_FIELD, HMAC_CFG_KEY_LENGTH_VALUE_KEY_512);
+        break;
+      case 1024 / 8:
+        ctx->cfg_reg = bitfield_field32_write(ctx->cfg_reg, HMAC_CFG_KEY_LENGTH_FIELD, HMAC_CFG_KEY_LENGTH_VALUE_KEY_1024);
+        break;
+      default:
+        return OTCRYPTO_BAD_ARGS;
+    }
+    // TODO: validate key->len, i.e. supported by HW.
+    ctx->key_len = key->len / sizeof(uint32_t);
+    for(size_t i = 0; i < ctx->key_len; i++) {
       ctx->key[i] = key->key[i];
     }
-  }
-
-  // TODO(#22731): implement other SHA2/HASH variants and remove hardcoded
-  // values.
-  ctx->digest_len = HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_256;
-  ctx->key_len = HMAC_CFG_KEY_LENGTH_VALUE_KEY_256;
-  
-  if (hmac_mode == kHmacModeHmac256) {
-    ctx->enable_hmac = kHardenedBoolTrue;
   } else {
-    ctx->enable_hmac = kHardenedBoolFalse;
+    // Ensure that `key` is NULL for hashing operations.
+    if (key != NULL) {
+      return OTCRYPTO_BAD_ARGS;
+    }
+    // Set `key_len` to 0, so that it is clear this is hash operation.
+    ctx->key_len = 0;
   }
-
-  // TODO: Consider zeroing state H, lower, upper, partial_block.
   
   // TODO: Better mubi type for hw_started.
   ctx->hw_started = 0;
 
   // TODO Consider init value for partial_block
   ctx->partial_block_len = 0;
+  
+  return OTCRYPTO_OK;
 }
 
 
@@ -293,11 +313,8 @@ void hmac_update(hmac_ctx_t *ctx, const uint8_t *data, size_t len) {
   // Check if we need to issue HW operation, i.e. whether we accumulated enough
   // message bits.
 
-  // TODO Add other block size cases.
-  size_t msg_block_len = kHmacSha256BlockBytes;
-
   // Skip if we do not have enough bytes to invoke HMAC.
-  if (ctx->partial_block_len + len < msg_block_len) {
+  if (ctx->partial_block_len + len < ctx->msg_block_len) {
     memcpy(ctx->partial_block + ctx->partial_block_len, data, len);
     ctx->partial_block_len += len;
     return;
@@ -305,7 +322,7 @@ void hmac_update(hmac_ctx_t *ctx, const uint8_t *data, size_t len) {
 
   // `leftover` bits refers to the size of the next partial block, after we
   // handle the current partial block and the incoming message bytes.
-  size_t leftover_len = (ctx->partial_block_len + len) % msg_block_len;
+  size_t leftover_len = (ctx->partial_block_len + len) % ctx->msg_block_len;
 
   // The previous caller should have left it clean, but it doesn't hurt to
   // clear again.
@@ -345,7 +362,8 @@ void hmac_update(hmac_ctx_t *ctx, const uint8_t *data, size_t len) {
   hmac_hwip_clear();
 }
 
-void hmac_final(hmac_ctx_t *ctx, hmac_digest_t *digest) {
+OT_WARN_UNUSED_RESULT
+status_t hmac_final(hmac_ctx_t *ctx, hmac_digest_t *digest) {
   
   // The previous caller should have left it clean, but it doesn't hurt to
   // clear again.
@@ -364,7 +382,12 @@ void hmac_final(hmac_ctx_t *ctx, hmac_digest_t *digest) {
   abs_mmio_write32(kHmacBaseAddr + HMAC_CMD_REG_OFFSET, cmd_reg);
   wait_hmac_done();
   
-  for (size_t i = 0; i < kHmacSha256DigestWords; i++) {
+  // TODO check digest_len is compatible with ctx.
+  if(ctx->digest_len != digest->len) {
+    return OTCRYPTO_BAD_ARGS;
+  }
+
+  for (size_t i = 0; i < digest->len / sizeof(uint32_t); i++) {
     digest->digest[i] = abs_mmio_read32(kHmacBaseAddr + HMAC_DIGEST_0_REG_OFFSET + 4*i);
   }
 
@@ -373,4 +396,5 @@ void hmac_final(hmac_ctx_t *ctx, hmac_digest_t *digest) {
 
   // TODO: destroy sensitive values in the ctx object
   // TODO: check if we had have errors
+  return OTCRYPTO_OK;
 }

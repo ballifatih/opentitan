@@ -9,6 +9,8 @@
 
 #include "sw/device/lib/base/macros.h"
 #include "sw/device/lib/base/hardened.h"
+#include "sw/device/lib/crypto/impl/status.h"
+
 
 #include "hmac_regs.h"
 
@@ -29,62 +31,66 @@ enum {
   kHmacKeyNumBytes = kHmacKeyNumBits / 8,
   /* Number of words in an HMAC key. */
   kHmacKeyNumWords = kHmacKeyNumBytes / sizeof(uint32_t),
+
+  /* Number of bits for maximum key size supported by HW natively. */
+  kHmacMaxKeyBits = 1024,
+  /* Number of words for maximum key size supported by HW natively. */
+  kHmacMaxKeyWords = kHmacMaxKeyBits / sizeof(uint32_t) / 8,
+
+  /* Number of bits for maximum digest size supported by HW natively. */
+  kHmacMaxDigestBits = 512,
+  /* Number of words for maximum digest size supported by HW natively. */
+  kHmacMaxDigestWords = kHmacMaxDigestBits / sizeof(uint32_t) / 8,
+  
+  /* Number of bits for maximum internal SHA-2 blocks size supported by HW natively. */
+  kHmacMaxBlockBits = 1024,
+  /* Number of bytes for maximum internal SHA-2 blocks size supported by HW natively. */
+  kHmacMaxBlockBytes = kHmacMaxBlockBits / 8,
+  /* Number of words for maximum internal SHA-2 blocks size supported by HW natively. */
+  kHmacMaxBlockWords = kHmacMaxBlockBytes / sizeof(uint32_t),
 };
 
 /**
- * Digest length supported by hardware. This is another way of referring to 
- * SHA2-256, SHA2-384 and SHA2-512 (as well as HMAC functions with the same
- * digest size).
- */
-typedef enum hmac_digest_len {
-  kHmacDigestLen256 = HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_256,
-  kHmacDigestLen384 = HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_384,
-  kHmacDigestLen512 = HMAC_CFG_DIGEST_SIZE_VALUE_SHA2_512,
-} hmac_digest_len_t;
-
-/**
- * Key lengths natively supported by HW.
- */
-typedef enum hmac_key_len {
-  kHmacKeyLen128 = HMAC_CFG_KEY_LENGTH_VALUE_KEY_128,
-  kHmacKeyLen256 = HMAC_CFG_KEY_LENGTH_VALUE_KEY_256,
-  kHmacKeyLen384 = HMAC_CFG_KEY_LENGTH_VALUE_KEY_384,
-  kHmacKeyLen512 = HMAC_CFG_KEY_LENGTH_VALUE_KEY_512,
-  kHmacKeyLen1024 = HMAC_CFG_KEY_LENGTH_VALUE_KEY_1024,
-} hmac_key_len_t;
-
-
-/**
- * A typed representation of the HMAC or SHA256 digest.
+ * A typed representation of the HMAC or SHA2 digests.
  */
 typedef struct hmac_digest {
-  uint32_t digest[8];
-  size_t len; // in bytes
+  uint32_t digest[kHmacMaxDigestWords];
+  // Length of `digest` in bytes.
+  size_t len;
 } hmac_digest_t;
 
 /**
  * A typed representation of an HMAC key.
+ * HW supports 128, 256, 384, 512, 1024 bit keys.
  */
 typedef struct hmac_key {
-  uint32_t key[8];
-  size_t len; // in bytes
+  uint32_t key[kHmacMaxKeyWords];
+  // Length of `key` in bytes.
+  size_t len;
 } hmac_key_t;
 
-
+/**
+ * A context struct maintained for streaming operations.
+ */
 typedef struct hmac_ctx {
+  // Back up cfg register, except SHA bit.
+  uint32_t cfg_reg;
   // Need to keep some extra info around to reconfigure HW every time.
-  uint32_t key[32];
-  hmac_digest_len_t digest_len;
-  hmac_key_len_t key_len;
-  hardened_bool_t enable_hmac;
-  // The following are directly stored/loaded from HW.
-  uint32_t H[16];
+  uint32_t key[kHmacMaxKeyWords];
+  // Length of `key` in words.
+  size_t key_len;
+  // The internal block size of HMAC/SHA2 in bytes.
+  size_t msg_block_len;
+  size_t digest_len;
+  // The following fields are saved and restored during streaming.
+  uint32_t H[kHmacMaxDigestWords];
   uint32_t lower;
   uint32_t upper;
-  // The following are SW-managed partial state
+  // The following are flags exclusively used by the driver to make whether
+  // or not the driver needs to pass the incoming requests to HMAC IP.
   uint32_t hw_started;
-  uint8_t partial_block[128];
-  // The following has bytes as unit.
+  uint8_t partial_block[kHmacMaxBlockBytes];
+  // The number of valid bytes in `partial_block`.
   size_t partial_block_len;
 } hmac_ctx_t;
 
@@ -105,18 +111,28 @@ typedef enum hmac_mode {
 
 
 /**
- * Initializes the context `ctx` according to given `hmac_mode`.
+ * Initializes the context `ctx` according to given `hmac_mode` and `key`.
  *
- * This function does not actually invoke any HW operation, but instead
- * it populates the `ctx` struct properly. The caller is responsible for
- * allocating memory for the pointers from `ctx`'s members.
+ * This function does not invoke HMAC HWIP operation, but instead prepares `ctx`
+ * with necessary data for streaming operations:
+ * i) Copy given key and length into `ctx`.
+ * ii) Prepare CFG register value (except `sha_en` bit) to be reloaded into
+ * HMAC's CSR for every update operation.
+ * iii) Initialize `hw_started` flag which indicates whether the very first
+ * HMAC HWIP operation is executed or not. This helps decide whether START or
+ * CONTINUE operation needs to be issues to HWIP.
+ * iv) Compute and store message block length and digest len to be used for the
+ * future calls.
+
+ * For SHA-2 operation, `key` must be set to NULL.
+ * For HMAC operations, the key length must be either of 128, 256, 384, 512 or
+ * 1024 bits, which are only values supported natively by HWIP.
  *
  * @param ctx Context object for SHA2/HMAC-SHA2 operations.
  * @param hmac_mode Specifies the mode among SHA2-256/384/512, HMAC-256/384/512.
- * @param key HMAC key. The key to be used with HMAC calls. For SHA-2 operations,
- * this input is irrelevant, and NULL pointer can be passed.
+ * @param key HMAC key. The key to be used with HMAC calls.
   */
-void hmac_init(hmac_ctx_t *ctx, const hmac_mode_t hmac_mode, const hmac_key_t *key);
+status_t hmac_init(hmac_ctx_t *ctx, const hmac_mode_t hmac_mode, const hmac_key_t *key);
 
 /**
  * Sends `len` bytes from `data` to the HMAC or SHA2-256 function.
@@ -156,7 +172,7 @@ void hmac_update(hmac_ctx_t *ctx, const uint8_t *data, size_t len);
  * wipe secret (need random input)
  *
  */
-void hmac_final(hmac_ctx_t *ctx, hmac_digest_t *digest);
+status_t hmac_final(hmac_ctx_t *ctx, hmac_digest_t *digest);
 
 #ifdef __cplusplus
 }
