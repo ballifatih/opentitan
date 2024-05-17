@@ -132,6 +132,7 @@ typedef enum hmac_mode {
  * @param hmac_mode Specifies the mode among SHA2-256/384/512, HMAC-256/384/512.
  * @param key HMAC key. The key to be used with HMAC calls.
   */
+OT_WARN_UNUSED_RESULT
 status_t hmac_init(hmac_ctx_t *ctx, const hmac_mode_t hmac_mode, const hmac_key_t *key);
 
 /**
@@ -172,6 +173,7 @@ void hmac_update(hmac_ctx_t *ctx, const uint8_t *data, size_t len);
  * wipe secret (need random input)
  *
  */
+OT_WARN_UNUSED_RESULT
 status_t hmac_final(hmac_ctx_t *ctx, hmac_digest_t *digest);
 
 #ifdef __cplusplus

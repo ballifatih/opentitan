@@ -192,7 +192,6 @@ static void write_to_msg_fifo(const uint8_t *msg, size_t msg_len) {
   }
 }
 
-OT_WARN_UNUSED_RESULT
 status_t hmac_init(hmac_ctx_t *ctx, const hmac_mode_t hmac_mode, const hmac_key_t *key) {
 
   if (ctx == NULL) {
@@ -362,7 +361,6 @@ void hmac_update(hmac_ctx_t *ctx, const uint8_t *data, size_t len) {
   hmac_hwip_clear();
 }
 
-OT_WARN_UNUSED_RESULT
 status_t hmac_final(hmac_ctx_t *ctx, hmac_digest_t *digest) {
   
   // The previous caller should have left it clean, but it doesn't hurt to
