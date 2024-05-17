@@ -37,8 +37,16 @@ def gen_random_test(seed, operation, input_msg_len, key_len):
 
     if operation == "HMAC256":
         mac = HMAC.new(key=key, digestmod=SHA256)
+    elif operation == "HMAC384":
+        mac = HMAC.new(key=key, digestmod=SHA384)
+    elif operation == "HMAC512":
+        mac = HMAC.new(key=key, digestmod=SHA512)
     elif operation == "SHA256":
         mac = SHA256.new()
+    elif operation == "SHA384":
+        mac = SHA384.new()
+    elif operation == "SHA512":
+        mac = SHA512.new()
 
     mac.update(input_msg)
     digest = mac.hexdigest()

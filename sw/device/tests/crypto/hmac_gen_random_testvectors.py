@@ -16,12 +16,14 @@ Generate multiple test vectos
 
 def gen_random_test(idx):
     random_instance = random.Random(idx)
-    operation = random_instance.choice(["SHA256", "HMAC256"])
+    operation = random_instance.choice(["SHA256", "HMAC256", "SHA512", "HMAC512"])
     input_msg_len = 8 * random_instance.randint(0, 400)
     # Ensure that the key length is larger or equal to security parameter.
     # Also, KMAC HWIP only supports a discrete set of key lengths.
     if operation in ["HMAC256"]:
         key_len = 256
+    elif operation == "HMAC512":
+        key_len = 512
     else:
         key_len = 0
 
