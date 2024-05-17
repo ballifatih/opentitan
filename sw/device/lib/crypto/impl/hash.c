@@ -195,9 +195,10 @@ otcrypto_status_t otcrypto_hash(otcrypto_const_byte_buf_t input_message,
     case kOtcryptoHashModeSha384:
       return sha384(input_message.data, input_message.len, digest.data);
     case kOtcryptoHashModeSha512:
-      hmac_init(&hwip_ctx, kHmacModeSha512, /*key=*/NULL);
+      hmac_digest.len = 512 / 8;
+      HARDENED_TRY(hmac_init(&hwip_ctx, kHmacModeSha512, /*key=*/NULL));
       hmac_update(&hwip_ctx, input_message.data, input_message.len);
-      hmac_final(&hwip_ctx, &hmac_digest);
+      HARDENED_TRY(hmac_final(&hwip_ctx, &hmac_digest));
       for (size_t i = 0; i < 16; i++) {
         digest.data[i] = hmac_digest.digest[i];
       }
