@@ -83,7 +83,7 @@ def main():
                         help='Key length (in bits).')
     parser.add_argument('--operation',
                         required=True,
-                        choices=['SHA256', 'HMAC256'],
+                        choices=['SHA256', 'SHA384', 'SHA512', 'HMAC256', 'HMAC384', 'HMAC512'],
                         help='SHA/HMAC mode (e.g. SHA256 or HMAC256).')
     parser.add_argument('--input_msg_len',
                         required=True,
