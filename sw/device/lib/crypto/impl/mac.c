@@ -172,9 +172,14 @@ otcrypto_status_t otcrypto_hmac_init(otcrypto_hmac_context_t *ctx,
       message_block_words = kSha512MessageBlockWords;
       break;
     case kOtcryptoKeyModeHmacSha512:
-      hash_mode = kOtcryptoHashModeSha512;
-      digest_words = kSha512DigestWords;
-      message_block_words = kSha512MessageBlockWords;
+      for(size_t i = 0; i < 16; i++) {
+        hmac_key.key[i] = key->keyblob[i] ^ key->keyblob[i+16];
+      }
+      hmac_key.len = 64;
+      HARDENED_TRY(hmac_init(&hwip_ctx, kHmacModeHmac512, &hmac_key));
+      memcpy(ctx->data, (uint8_t *) &hwip_ctx, sizeof(hmac_ctx_t));
+      return OTCRYPTO_OK;
+
       break;
     default:
       return OTCRYPTO_BAD_ARGS;
@@ -272,9 +277,6 @@ otcrypto_status_t otcrypto_hmac_update(
   // hwip_sha256_state_save(ctx, &hwip_ctx);
   memcpy(ctx->data, (uint8_t *) &hwip_ctx, sizeof(hmac_ctx_t));
   return OTCRYPTO_OK;
-
-  // Append the message to the inner block.
-  return otcrypto_hash_update(&ctx->inner, input_message);
 }
 
 otcrypto_status_t otcrypto_hmac_final(otcrypto_hmac_context_t *const ctx,
@@ -285,15 +287,11 @@ otcrypto_status_t otcrypto_hmac_final(otcrypto_hmac_context_t *const ctx,
 
   hmac_ctx_t hwip_ctx;
   hmac_digest_t digest;
-  digest.len = 32;
+  digest.len = tag.len * sizeof(uint32_t);
   // hwip_sha256_state_restore(ctx, &hwip_ctx);
   memcpy((uint8_t *) &hwip_ctx, ctx->data, sizeof(hmac_ctx_t));
   HARDENED_TRY(hmac_final(&hwip_ctx, &digest));
-  // TODO discard the state
-  for(size_t i = 0; i<8; i++) {
-    tag.data[i] = digest.digest[i];
-  }
-  tag.len = digest.len / 4;
+  hardened_memcpy(tag.data, digest.digest, tag.len);
   return OTCRYPTO_OK;
 
   // Create digest buffer that points to the tag.
