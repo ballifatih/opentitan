@@ -282,7 +282,7 @@ otcrypto_status_t otcrypto_hash_init(otcrypto_hash_context_t *const ctx,
   hmac_ctx_t hwip_ctx;
   switch (hash_mode) {
     case kOtcryptoHashModeSha256: {
-      hmac_init(&hwip_ctx, kHmacModeSha256, /*hmac_key=*/NULL);
+      HARDENED_TRY(hmac_init(&hwip_ctx, kHmacModeSha256, /*hmac_key=*/NULL));
       break;
     }
     case kOtcryptoHashModeSha384: {
@@ -292,7 +292,7 @@ otcrypto_status_t otcrypto_hash_init(otcrypto_hash_context_t *const ctx,
       break;
     }
     case kOtcryptoHashModeSha512: {
-      hmac_init(&hwip_ctx, kHmacModeSha512, /*hmac_key=*/NULL);
+      HARDENED_TRY(hmac_init(&hwip_ctx, kHmacModeSha512, /*hmac_key=*/NULL));
       break;
     }
     default:
@@ -357,7 +357,7 @@ otcrypto_status_t otcrypto_hash_final(otcrypto_hash_context_t *const ctx,
   switch (ctx->mode) {
     case kOtcryptoHashModeSha256: {
       hmac_digest.len = 256 /8;
-      hmac_final(&hwip_ctx, &hmac_digest);
+      HARDENED_TRY(hmac_final(&hwip_ctx, &hmac_digest));
       hardened_memcpy(digest.data, hmac_digest.digest, kHmacDigestNumWords);
       break;
     }
@@ -368,7 +368,8 @@ otcrypto_status_t otcrypto_hash_final(otcrypto_hash_context_t *const ctx,
       break;
     }
     case kOtcryptoHashModeSha512: {
-      hmac_final(&hwip_ctx, &hmac_digest);
+      hmac_digest.len = 512 / 8;
+      HARDENED_TRY(hmac_final(&hwip_ctx, &hmac_digest));
       hardened_memcpy(digest.data, hmac_digest.digest, 512 / 8 /4);
       break;
     }
