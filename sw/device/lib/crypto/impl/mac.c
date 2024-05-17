@@ -158,7 +158,7 @@ otcrypto_status_t otcrypto_hmac_init(otcrypto_hmac_context_t *ctx,
         hmac_key.key[i] = key->keyblob[i] ^ key->keyblob[i+8];
       }
       hmac_key.len = 32;
-      hmac_init(&hwip_ctx, kHmacModeHmac256, &hmac_key);
+      HARDENED_TRY(hmac_init(&hwip_ctx, kHmacModeHmac256, &hmac_key));
       // hwip_sha256_state_save(ctx, &hwip_ctx);
       memcpy(ctx->data, (uint8_t *) &hwip_ctx, sizeof(hmac_ctx_t));
       return OTCRYPTO_OK;
@@ -285,9 +285,10 @@ otcrypto_status_t otcrypto_hmac_final(otcrypto_hmac_context_t *const ctx,
 
   hmac_ctx_t hwip_ctx;
   hmac_digest_t digest;
+  digest.len = 32;
   // hwip_sha256_state_restore(ctx, &hwip_ctx);
   memcpy((uint8_t *) &hwip_ctx, ctx->data, sizeof(hmac_ctx_t));
-  hmac_final(&hwip_ctx, &digest);
+  HARDENED_TRY(hmac_final(&hwip_ctx, &digest));
   // TODO discard the state
   for(size_t i = 0; i<8; i++) {
     tag.data[i] = digest.digest[i];
