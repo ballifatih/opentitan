@@ -44,36 +44,22 @@ enum {
 enum {
   /* 128 bit key. */
   kHmacKey128Bytes = 128 / 8,
+  kHmacKey128Words = kHmacKey128Bytes / sizeof(uint32_t),
   /* 256 bit key. */
   kHmacKey256Bytes = 256 / 8,
+  kHmacKey256Words = kHmacKey256Bytes / sizeof(uint32_t),
   /* 384 bit key. */
   kHmacKey384Bytes = 384 / 8,
+  kHmacKey384Words = kHmacKey384Bytes / sizeof(uint32_t),
   /* 512 bit key. */
   kHmacKey512Bytes = 512 / 8,
+  kHmacKey512Words = kHmacKey512Bytes / sizeof(uint32_t),
   /* 1024 bit key. */
   kHmacKey1024Bytes = 1024 / 8,
+  kHmacKey1024Words = kHmacKey1024Bytes / sizeof(uint32_t),
   /* Number of words for maximum key size supported by HW natively. */
-  kHmacMaxKeyWords = kHmacKey1024Bytes / sizeof(uint32_t),
+  kHmacMaxKeyWords = kHmacKey1024Words,
 };
-
-/**
- * A typed representation of the SHA-2/HMAC digests.
- */
-typedef struct hmac_digest {
-  uint32_t digest[kHmacMaxDigestWords];
-  // Length of `digest` in bytes.
-  size_t len;
-} hmac_digest_t;
-
-/**
- * A typed representation of an HMAC key. HWIP supports 128, 256, 384, 512, 1024
- * bit keys natively.
- */
-typedef struct hmac_key {
-  uint32_t key[kHmacMaxKeyWords];
-  // Length of `key` in bytes.
-  size_t len;
-} hmac_key_t;
 
 /**
  * A context struct maintained for streaming operations.
@@ -132,19 +118,20 @@ typedef enum hmac_mode {
  * iv) Compute and store message block length and digest len fields to `ctx`.
  *
  * For SHA-2 operation, `key` must be set to NULL.
- * For HMAC operations, `key` must point to a valid `hmac_key_t` struct where
- * `key->len` corresponds to either one of the natively supported key lengths:
- * {128, 256, 384, 512, 1024} bits. `key->key` should have sufficient number of
- * words for the matching key length.
+ * For HMAC operations, `key` must point to a valid `otcrypto_word32_buf_t`
+ * struct where `key->len` corresponds to either one of the natively supported
+ * key lengths: {128, 256, 384, 512, 1024} bits. The unit for `key->len` is
+ * words. `key->data` should have sufficient number of words for the matching
+ * key length.
  *
  * @param[out] ctx Initialized context object for SHA2/HMAC-SHA2 operations.
  * @param hmac_mode Specifies the mode among SHA2-256/384/512, HMAC-256/384/512.
  * @param key HMAC key. The key to be used with HMAC calls.
- * @return Error status.
+ * @return Result of the operation.
  */
 OT_WARN_UNUSED_RESULT
 status_t hmac_init(hmac_ctx_t *ctx, const hmac_mode_t hmac_mode,
-                   const hmac_key_t *key);
+                   otcrypto_const_word32_buf_t *key);
 
 /**
  * Updates the state of `ctx` with given additional messsage bytes.
@@ -168,7 +155,7 @@ status_t hmac_init(hmac_ctx_t *ctx, const hmac_mode_t hmac_mode,
  * @param ctx Context object referring to a particular SHA-2/HMAC stream.
  * @param data Incoming message bytes to be processed into the stream.
  * @param len size of the `data` buffer in bytes.
- * @return Error status.
+ * @return Result of the operation.
  */
 OT_WARN_UNUSED_RESULT
 status_t hmac_update(hmac_ctx_t *ctx, const uint8_t *data, size_t len);
@@ -184,12 +171,44 @@ status_t hmac_update(hmac_ctx_t *ctx, const uint8_t *data, size_t len);
  * invoked at HWIP to conclude SHA-2/HMAC operation and produce the digest/tag.
  * The result is read from HWIP into `digest` and the state of HWIP is cleared.
  *
+ * `digest->data` should point to a sufficiently large buffer to accommodate
+ * the resulting digest. The unit for `digest->len` is words. `digest->len`
+ * must match the digest length implied by the mode used during the
+ * initialization of `ctx`, otherwise an error is returned.
+ *
  * @param ctx Context object referring to a particular stream.
  * @param[out] digest The digest value to be returned.
- * @return Error status.
+ * @return Result of the operation.
  */
 OT_WARN_UNUSED_RESULT
-status_t hmac_final(hmac_ctx_t *ctx, hmac_digest_t *digest);
+status_t hmac_final(hmac_ctx_t *ctx, otcrypto_word32_buf_t *digest);
+
+/**
+ * One-shot SHA-2/HMAC call.
+ *
+ * This function uses `hmac_mode` to determine whether to run SHA-2 or HMAC
+ * including the digest size. See `hmac_mode_t` for possible values.
+ *
+ * For SHA-2 operation, `key` must be set to NULL.
+ * For HMAC operations, `key` must point to a valid `otcrypto_word32_buf_t`
+ * struct where `key->len` corresponds to either one of the natively supported
+ * key lengths: {128, 256, 384, 512, 1024} bits. The unit for `key->len` is
+ * words. `key->data` should have sufficient number of words for the matching
+ * key length.
+ *
+ * `digest` struct should be properly allocated, with `digest->data` pointing to
+ * sufficiently large buffer for the digest size implied by `hmac_mode`.
+ * `digest->len` should be the length of the digest in words.
+ *
+ * @param[out] ctx Initialized context object for SHA2/HMAC-SHA2 operations.
+ * @param hmac_mode Specifies the mode among SHA2-256/384/512, HMAC-256/384/512.
+ * @param key HMAC key. The key to be used with HMAC calls.
+ * @return Result of the operation.
+ */
+OT_WARN_UNUSED_RESULT
+status_t hmac_oneshot(const hmac_mode_t hmac_mode,
+                      otcrypto_const_word32_buf_t *key, const uint8_t *data,
+                      size_t len, otcrypto_word32_buf_t *digest);
 
 #ifdef __cplusplus
 }
