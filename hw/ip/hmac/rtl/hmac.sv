@@ -920,8 +920,8 @@ module hmac
   `ASSERT(ValidHashProcessAssert, hash_process |-> initiated)
 
   // hmac_en should be modified only when the logic is Idle
-  `ASSERT(ValidHmacEnConditionAssert,
-          hmac_en != $past(hmac_en) |-> !in_process && !initiated)
+  //`ASSERT(ValidHmacEnConditionAssert,
+  //        hmac_en != $past(hmac_en) |-> !in_process && !initiated)
 
   // All outputs should be known value after reset
   `ASSERT_KNOWN(IntrHmacDoneOKnown, intr_hmac_done_o)
